@@ -10,7 +10,7 @@ services:
     startCommand: "gunicorn app:app"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.12 # Or the specific version used in the environment
+        value: 3.12.3 # Or the specific version used in the environment
       # The user will set the following environment variables in the Render UI
       # - PEXELS_API_KEY
       # - OPENAI_API_KEY
