@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Δημιουργός Περιεχομένου για Sneakers</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .platform-selector {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 1.5em;
+            border: 1px solid #ddd;
+            padding: 1em;
+            border-radius: 8px;
+        }
+        .platform-selector label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+        }
+        form label {
+            display: block;
+            margin-bottom: 0.5em;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 1em;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Δημιουργός Περιεχομένου για Sneakers</h1>
+        <p>Εισάγετε το όνομα ενός sneaker και επιλέξτε τις πλατφόρμες για τις οποίες θέλετε να δημιουργηθεί περιεχόμενο.</p>
+        
+        <form action="/generate" method="post">
+            <label for="sneaker_name">1. Όνομα Sneaker</label>
+            <input type="text" id="sneaker_name" name="sneaker_name" placeholder="π.χ. Nike Air Force 1" required>
+
+            <label>2. Επιλογή Πλατφορμών</label>
+            <div class="platform-selector">
+                <label><input type="checkbox" name="platforms" value="Instagram" checked> Instagram</label>
+                <label><input type="checkbox" name="platforms" value="Facebook" checked> Facebook</label>
+                <label><input type="checkbox" name="platforms" value="TikTok" checked> TikTok</label>
+                <label><input type="checkbox" name="platforms" value="Pinterest"> Pinterest</label>
+                <label><input type="checkbox" name="platforms" value="YouTube"> YouTube</label>
+            </div>
+            
+            <button type="submit">Δημιουργία Περιεχομένου</button>
+        </form>
+    </div>
+</body>
+</html>
