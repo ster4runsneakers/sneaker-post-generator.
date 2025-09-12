@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Αποτελέσματα για: {{ sneaker_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body { max-width: 900px; margin: 2em auto; line-height: 1.6; }
+        .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2em; }
+        .platform-card { border: 1px solid #ccc; padding: 1em; border-radius: 8px; margin-bottom: 1em; }
+        .platform-card h3 { margin-top: 0; }
+        .images-container img { max-width: 100%; border-radius: 4px; margin-bottom: 1em; }
+        video { max-width: 100%; border-radius: 8px; }
+        pre { background-color: #f4f4f4; padding: 1em; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; }
+        .copy-btn {
+            background-color: #4CAF50; color: white; border: none; padding: 5px 10px;
+            border-radius: 4px; cursor: pointer; float: right;
+        }
+        .copy-btn:hover { background-color: #45a049; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Αποτελέσματα για: "{{ sneaker_name }}"</h1>
+        <a href="/">&larr; Δημιουργία Νέου Περιεχομένου</a>
+        <hr>
+
+        <div class="results-grid">
+            <div>
+                <h2>Δημιουργημένο Βίντεο</h2>
+                <video controls>
+                    <source src="{{ video_url }}" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+
+                <h2>Εικόνες που βρέθηκαν</h2>
+                <div class="images-container">
+                    {% for url in image_urls %}
+                        <img src="{{ url }}" alt="Εικόνα για {{ sneaker_name }}">
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div>
+                <h2>Κείμενα για Social Media</h2>
+                {% for platform_content in all_texts %}
+                    <div class="platform-card">
+                        <h3>{{ platform_content.platform }} <button class="copy-btn" onclick="copyAll(this)">Copy All</button></h3>
+                        
+                        <h4>Ελληνικά</h4>
+                        <div id="gr-{{ platform_content.platform }}">
+                            <pre><strong>Hook:</strong> <span id="gr-hook-{{ platform_content.platform }}">{{ platform_content.greek.hook }}</span> <button class="copy-btn" onclick="copyToClipboard('gr-hook-{{ platform_content.platform }}')">Copy</button></pre>
+                            <pre><strong>Caption:</strong> <span id="gr-caption-{{ platform_content.platform }}">{{ platform_content.greek.caption }}</span> <button class="copy-btn" onclick="copyToClipboard('gr-caption-{{ platform_content.platform }}')">Copy</button></pre>
+                            <pre><strong>Hashtags:</strong> <span id="gr-hashtags-{{ platform_content.platform }}">{{ platform_content.greek.hashtags }} {{ platform_content.greek.emojis }}</span> <button class="copy-btn" onclick="copyToClipboard('gr-hashtags-{{ platform_content.platform }}')">Copy</button></pre>
+                        </div>
+
+                        <h4>Αγγλικά</h4>
+                        <div id="en-{{ platform_content.platform }}">
+                             <pre><strong>Hook:</strong> <span id="en-hook-{{ platform_content.platform }}">{{ platform_content.english.hook }}</span> <button class="copy-btn" onclick="copyToClipboard('en-hook-{{ platform_content.platform }}')">Copy</button></pre>
+                            <pre><strong>Caption:</strong> <span id="en-caption-{{ platform_content.platform }}">{{ platform_content.english.caption }}</span> <button class="copy-btn" onclick="copyToClipboard('en-caption-{{ platform_content.platform }}')">Copy</button></pre>
+                            <pre><strong>Hashtags:</strong> <span id="en-hashtags-{{ platform_content.platform }}">{{ platform_content.english.hashtags }} {{ platform_content.english.emojis }}</span> <button class="copy-btn" onclick="copyToClipboard('en-hashtags-{{ platform_content.platform }}')">Copy</button></pre>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function copyToClipboard(elementId) {
+            const textToCopy = document.getElementById(elementId).innerText;
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                // Optional: Give user feedback
+                console.log('Copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
+        }
+
+        function copyAll(button) {
+            const card = button.closest('.platform-card');
+            const gr_hook = card.querySelector('[id^="gr-hook-"]').innerText;
+            const gr_caption = card.querySelector('[id^="gr-caption-"]').innerText;
+            const gr_hashtags = card.querySelector('[id^="gr-hashtags-"]').innerText;
+            const en_hook = card.querySelector('[id^="en-hook-"]').innerText;
+            const en_caption = card.querySelector('[id^="en-caption-"]').innerText;
+            const en_hashtags = card.querySelector('[id^="en-hashtags-"]').innerText;
+
+            const allText = `
+--- GREEK ---
+Hook: ${gr_hook}
+Caption: ${gr_caption}
+Hashtags: ${gr_hashtags}
+
+--- ENGLISH ---
+Hook: ${en_hook}
+Caption: ${en_caption}
+Hashtags: ${en_hashtags}
+            `;
+            navigator.clipboard.writeText(allText.trim()).then(() => {
+                console.log('Copied all content for this platform!');
+            }).catch(err => {
+                console.error('Failed to copy all: ', err);
+            });
+        }
+    </script>
+</body>
+</html>
