@@ -1,0 +1,20 @@
+# render.yaml
+# This file tells Render.com how to build and run the application.
+
+services:
+  - type: web
+    name: sneaker-content-generator
+    env: python
+    plan: free # Or your preferred plan
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12 # Or the specific version used in the environment
+      # The user will set the following environment variables in the Render UI
+      # - PEXELS_API_KEY
+      # - OPENAI_API_KEY
+      # - SHOTSTACK_API_KEY
+      # - CLOUDINARY_CLOUD_NAME
+      # - CLOUDINARY_API_KEY
+      # - CLOUDINARY_API_SECRET
