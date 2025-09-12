@@ -1,0 +1,8 @@
+Flask
+requests
+python-dotenv
+cloudinary
+pexels-api-py
+gunicorn
+pytest
+pytest-mock
