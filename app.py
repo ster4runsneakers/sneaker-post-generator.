@@ -1,125 +1,110 @@
-import pytest
-from app import app as flask_app
-import api_handler
 import os
+from dotenv import load_dotenv
+import google.generativeai as genai
+from flask import Flask, render_template, request
+from werkzeug.utils import secure_filename
+import requests
+import json
+import cloudinary
+import cloudinary.uploader
 
-# --- Pytest Fixture for Flask App ---
+# --- Αρχικοποίηση ---
+UPLOAD_FOLDER = 'uploads'
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+load_dotenv()
 
-@pytest.fixture
-def app():
-    yield flask_app
+# --- Ρύθμιση για το Gemini AI ---
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-@pytest.fixture
-def client(app):
-    return app.test_client()
+# --- Ρύθμιση για το Cloudinary ---
+cloudinary.config(
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key = os.getenv("CLOUDINARY_API_KEY"),
+    api_secret = os.getenv("CLOUDINARY_API_SECRET")
+)
 
-# --- Tests for api_handler.py ---
+# --- Συναρτήσεις ---
+def call_ai(sneaker_name, language, tone):
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    prompt = f"""
+    Create a complete social media post for the "{sneaker_name}" sneaker.
+    The tone of the post should be **{tone}**. Please provide the following in the {language} language, using these exact headers:
+    HOOKS: [List of 3 hooks here]
+    CAPTION: [The caption text here]
+    HASHTAGS: [List of 5 hashtags here]
+    """
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        print(f"Error calling Gemini AI: {e}")
+        return "Error"
 
-def test_google_search_images_success(mocker):
-    """Test successful image search with Google Custom Search."""
-    # Mock the googleapiclient.discovery.build function
-    mock_service = mocker.Mock()
-    mock_list_request = mocker.Mock()
-    mock_list_request.execute.return_value = {
-        'items': [{'link': 'http://fake.google.com/image.jpg'}]
-    }
-    mock_service.cse.return_value.list.return_value = mock_list_request
-    mocker.patch('api_handler.build', return_value=mock_service)
-    
-    mocker.patch('api_handler.GOOGLE_API_KEY', 'fake_google_api_key')
-    mocker.patch('api_handler.GOOGLE_CX_KEY', 'fake_google_cx')
-    
-    urls = api_handler.search_images("test sneaker")
-    assert urls == ['http://fake.google.com/image.jpg']
-    mock_service.cse().list.assert_called_once_with(
-        q="test sneaker",
-        cx='fake_google_cx',
-        searchType='image',
-        num=5,
-        rights='cc_publicdomain,cc_attribute,cc_sharealike,cc_noncommercial,cc_nonderived'
-    )
+def parse_ai_response(text):
+    if "Error" in text: return {"hooks": text, "caption": "", "hashtags": ""}
+    try:
+        hooks = text.split("HOOKS:")[1].split("CAPTION:")[0].strip()
+        caption = text.split("CAPTION:")[1].split("HASHTAGS:")[0].strip()
+        hashtags = text.split("HASHTAGS:")[1].strip()
+        return {"hooks": hooks, "caption": caption, "hashtags": hashtags}
+    except IndexError:
+        return {"hooks": text, "caption": "Could not parse response.", "hashtags": "Could not parse response."}
 
-def test_generate_text_success(mocker):
-    """Test successful text generation with OpenAI."""
-    mock_response = mocker.Mock()
-    mock_response.json.return_value = {
-        'choices': [{'message': {'content': '{"greek": {"hook": "Γεια"}, "english": {"hook": "Hello"}}'}}]
-    }
-    mock_response.raise_for_status.return_value = None
-    mocker.patch('requests.post', return_value=mock_response)
+def create_video(image_urls, text_parts):
+    shotstack_key = os.getenv("SHOTSTACK_API_KEY")
+    url = "https://api.shotstack.io/v1/render"
+    clips = []
+    start_time = 0
+    clip_length = 3
+    for image_url in image_urls:
+        clip = { "asset": { "type": "image", "src": image_url }, "start": start_time, "length": clip_length }
+        clips.append(clip)
+        start_time += clip_length
     
-    mocker.patch('api_handler.OPENAI_API_KEY', 'fake_key')
-    
-    result = api_handler.generate_text_for_platform("test sneaker", "Instagram")
-    assert result['platform'] == "Instagram"
-    assert result['greek']['hook'] == "Γεια"
-    
-def test_create_video_success(mocker):
-    """Test successful video render submission to Shotstack."""
-    mock_response = mocker.Mock()
-    mock_response.json.return_value = {'response': {'id': 'render-123'}}
-    mock_response.raise_for_status.return_value = None
-    mocker.patch('requests.post', return_value=mock_response)
-    
-    mocker.patch('api_handler.SHOTSTACK_API_KEY', 'fake_key')
-    
-    render_id = api_handler.create_video("test sneaker", ["http://fake.url/image.jpg"])
-    assert render_id == 'render-123'
-    
-def test_upload_to_cloudinary_success(mocker):
-    """Test successful upload to Cloudinary."""
-    mock_upload_result = {'secure_url': 'http://res.cloudinary.com/video.mp4'}
-    mocker.patch('cloudinary.uploader.upload', return_value=mock_upload_result)
-    
-    mocker.patch('cloudinary.config', return_value=None)
-    mocker.patch('api_handler.cloudinary.config', return_value=None)
-    mocker.patch('api_handler.cloudinary.config', **{'return_value.cloud_name': 'name', 'return_value.api_key': 'key', 'return_value.api_secret': 'secret'})
+    title_clip = { "asset": { "type": "title", "text": text_parts['caption'], "style": "minimal", "size": "small" }, "start": 1, "length": start_time - 2 }
+    clips.append(title_clip)
+    payload = { "timeline": { "soundtrack": { "src": "https://shotstack-assets.s3.ap-southeast-2.amazonaws.com/music/unmm/world.mp3", "effect": "fadeInFadeOut" }, "tracks": [{ "clips": clips }] }, "output": { "format": "mp4", "resolution": "1080" } }
+    headers = { "Content-Type": "application/json", "x-api-key": shotstack_key }
+    try:
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        response.raise_for_status()
+        return response.json()['response']['id']
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred with Shotstack request: {e}")
+        print(f"Response body: {e.response.text if e.response else 'No response'}")
+        return None
 
-    url = api_handler.upload_to_cloudinary("http://shotstack.url/video.mp4", "test_sneaker")
-    assert url == 'http://res.cloudinary.com/video.mp4'
+# --- Κεντρική Λογική (Route) ---
+@app.route('/', methods=['GET', 'POST'])
+def home():
+    ai_result_parts = None
+    video_render_id = None
+    if request.method == 'POST':
+        sneaker_name_from_form = request.form['sneaker_name']
+        language_from_form = request.form['language']
+        tone_from_form = request.form['tone']
+        
+        raw_text_result = call_ai(sneaker_name_from_form, language_from_form, tone_from_form)
+        ai_result_parts = parse_ai_response(raw_text_result)
+        
+        uploaded_files = request.files.getlist('images')
+        image_urls_for_video = []
+        if uploaded_files and uploaded_files[0].filename != '':
+            for file in uploaded_files:
+                if file:
+                    try:
+                        upload_result = cloudinary.uploader.upload(file)
+                        image_urls_for_video.append(upload_result['secure_url'])
+                    except Exception as e:
+                        print(f"Cloudinary upload failed: {e}")
+                        pass
+            
+            if ai_result_parts and image_urls_for_video:
+                 video_render_id = create_video(image_urls_for_video, ai_result_parts)
 
-# --- Tests for app.py (Flask App) ---
+    return render_template('index.html', result=ai_result_parts, video_id=video_render_id)
 
-def test_index_route(client):
-    """Test the index route loads correctly."""
-    response = client.get('/')
-    assert response.status_code == 200
-    assert "Δημιουργός Περιεχομένου για Sneakers" in response.data.decode('utf-8')
-
-def test_generate_route(client, mocker):
-    """Test the generate route with mocked backend calls."""
-    mocker.patch('api_handler.search_images', return_value=['img1.jpg'])
-    mocker.patch('api_handler.generate_all_texts', return_value=[{'platform': 'Test', 'greek': {}, 'english': {}}])
-    mocker.patch('api_handler.create_video', return_value='render-123')
-    
-    response = client.post('/generate', data={
-        'sneaker_name': 'My Test Shoe',
-        'platforms': ['Instagram']
-    })
-    
-    assert response.status_code == 200
-    assert "Κείμενα για Social Media" in response.data.decode('utf-8')
-    
-    api_handler.search_images.assert_called_once_with('My Test Shoe')
-    api_handler.generate_all_texts.assert_called_once_with('My Test Shoe', ['Instagram'])
-    api_handler.create_video.assert_called_once_with('My Test Shoe', ['img1.jpg'])
-
-def test_status_route_done(client, mocker):
-    """Test the status route when rendering is done."""
-    mocker.patch('api_handler.get_render_status', return_value={'status': 'done', 'url': 'http://shotstack.url/video.mp4', 'id': '123'})
-    mocker.patch('api_handler.upload_to_cloudinary', return_value='http://cloudinary.url/video.mp4')
-    
-    response = client.get('/status/render-123')
-    assert response.status_code == 200
-    json_data = response.get_json()
-    assert json_data['status'] == 'done'
-    assert json_data['url'] == 'http://cloudinary.url/video.mp4'
-
-def test_status_route_rendering(client, mocker):
-    """Test the status route when still rendering."""
-    mocker.patch('api_handler.get_render_status', return_value={'status': 'rendering'})
-    
-    response = client.get('/status/render-123')
-    assert response.status_code == 200
-    json_data = response.get_json()
-    assert json_data['status'] == 'rendering'
+if __name__ == '__main__':
+    app.run(debug=True)
