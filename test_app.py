@@ -19,16 +19,16 @@ def test_search_images_success(mocker):
     """Test successful image search with Pexels."""
     # Mock the Pexels class and its methods
     mock_api_instance = mocker.Mock()
-    mock_photo = mocker.Mock()
-    mock_photo.src = {'large': 'http://fake.url/image.jpg'}
-    mock_api_instance.search.return_value.entries = [mock_photo]
+    # The photo object is a dictionary, not a class instance
+    mock_photo = {'src': {'large': 'http://fake.url/image.jpg'}}
+    mock_api_instance.search_photos.return_value = {'photos': [mock_photo]}
     mocker.patch('api_handler.Pexels', return_value=mock_api_instance)
     
     mocker.patch('api_handler.PEXELS_API_KEY', 'fake_key')
     
     urls = api_handler.search_images("test sneaker")
     assert urls == ['http://fake.url/image.jpg']
-    mock_api_instance.search.assert_called_once_with("test sneaker", page=1, results_per_page=5)
+    mock_api_instance.search_photos.assert_called_once_with("test sneaker", page=1, per_page=5)
 
 def test_generate_text_success(mocker):
     """Test successful text generation with OpenAI."""
