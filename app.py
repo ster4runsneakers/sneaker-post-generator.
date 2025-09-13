@@ -1,66 +1,125 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify
-import api_handler # Import our REAL handler
-import time
+import pytest
+from app import app as flask_app
+import api_handler
+import os
 
-app = Flask(__name__)
+# --- Pytest Fixture for Flask App ---
 
-@app.route('/')
-def index():
-    """Renders the main input page."""
-    return render_template('index.html')
+@pytest.fixture
+def app():
+    yield flask_app
 
-@app.route('/generate', methods=['POST'])
-def generate():
-    """
-    Handles the form submission, starts the content generation process,
-    and renders the initial results page.
-    """
-    sneaker_name = request.form.get('sneaker_name')
-    platforms = request.form.getlist('platforms') # Get list of selected platforms
+@pytest.fixture
+def client(app):
+    return app.test_client()
 
-    if not sneaker_name or not platforms:
-        return redirect(url_for('index'))
+# --- Tests for api_handler.py ---
 
-    # --- This part of the flow is synchronous ---
-    # 1. Get image URLs from Pexels
-    image_urls = api_handler.search_images(sneaker_name)
+def test_google_search_images_success(mocker):
+    """Test successful image search with Google Custom Search."""
+    # Mock the googleapiclient.discovery.build function
+    mock_service = mocker.Mock()
+    mock_list_request = mocker.Mock()
+    mock_list_request.execute.return_value = {
+        'items': [{'link': 'http://fake.google.com/image.jpg'}]
+    }
+    mock_service.cse.return_value.list.return_value = mock_list_request
+    mocker.patch('api_handler.build', return_value=mock_service)
     
-    # 2. Get text content for all selected platforms from OpenAI
-    all_texts = api_handler.generate_all_texts(sneaker_name, platforms)
+    mocker.patch('api_handler.GOOGLE_API_KEY', 'fake_google_api_key')
+    mocker.patch('api_handler.GOOGLE_CX_KEY', 'fake_google_cx')
     
-    # --- This part is asynchronous ---
-    # 3. Start the video render with Shotstack
-    render_id = api_handler.create_video(sneaker_name, image_urls)
-    
-    # Render a results page that will poll for the video status
-    return render_template(
-        'results.html',
-        sneaker_name=sneaker_name,
-        image_urls=image_urls,
-        all_texts=all_texts,
-        render_id=render_id # Pass the render_id to the template
+    urls = api_handler.search_images("test sneaker")
+    assert urls == ['http://fake.google.com/image.jpg']
+    mock_service.cse().list.assert_called_once_with(
+        q="test sneaker",
+        cx='fake_google_cx',
+        searchType='image',
+        num=5,
+        rights='cc_publicdomain,cc_attribute,cc_sharealike,cc_noncommercial,cc_nonderived'
     )
 
-@app.route('/status/<render_id>')
-def status(render_id):
-    """
-    An endpoint for the frontend to poll for the video render status.
-    Once the video is done, it uploads it to Cloudinary and returns the final URL.
-    """
-    render_info = api_handler.get_render_status(render_id)
+def test_generate_text_success(mocker):
+    """Test successful text generation with OpenAI."""
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {
+        'choices': [{'message': {'content': '{"greek": {"hook": "Γεια"}, "english": {"hook": "Hello"}}'}}]
+    }
+    mock_response.raise_for_status.return_value = None
+    mocker.patch('requests.post', return_value=mock_response)
     
-    if render_info['status'] == 'done':
-        # Video is ready, get its URL
-        video_url = render_info['url']
-        # Upload to Cloudinary for permanent storage
-        cloudinary_url = api_handler.upload_to_cloudinary(video_url, render_info['id'])
-        return jsonify({'status': 'done', 'url': cloudinary_url or video_url})
+    mocker.patch('api_handler.OPENAI_API_KEY', 'fake_key')
     
-    elif render_info['status'] == 'failed':
-        return jsonify({'status': 'failed'})
-        
-    else: # 'submitted', 'queued', 'rendering'
-        return jsonify({'status': 'rendering'})
+    result = api_handler.generate_text_for_platform("test sneaker", "Instagram")
+    assert result['platform'] == "Instagram"
+    assert result['greek']['hook'] == "Γεια"
+    
+def test_create_video_success(mocker):
+    """Test successful video render submission to Shotstack."""
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {'response': {'id': 'render-123'}}
+    mock_response.raise_for_status.return_value = None
+    mocker.patch('requests.post', return_value=mock_response)
+    
+    mocker.patch('api_handler.SHOTSTACK_API_KEY', 'fake_key')
+    
+    render_id = api_handler.create_video("test sneaker", ["http://fake.url/image.jpg"])
+    assert render_id == 'render-123'
+    
+def test_upload_to_cloudinary_success(mocker):
+    """Test successful upload to Cloudinary."""
+    mock_upload_result = {'secure_url': 'http://res.cloudinary.com/video.mp4'}
+    mocker.patch('cloudinary.uploader.upload', return_value=mock_upload_result)
+    
+    mocker.patch('cloudinary.config', return_value=None)
+    mocker.patch('api_handler.cloudinary.config', return_value=None)
+    mocker.patch('api_handler.cloudinary.config', **{'return_value.cloud_name': 'name', 'return_value.api_key': 'key', 'return_value.api_secret': 'secret'})
 
-if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=8080)
+    url = api_handler.upload_to_cloudinary("http://shotstack.url/video.mp4", "test_sneaker")
+    assert url == 'http://res.cloudinary.com/video.mp4'
+
+# --- Tests for app.py (Flask App) ---
+
+def test_index_route(client):
+    """Test the index route loads correctly."""
+    response = client.get('/')
+    assert response.status_code == 200
+    assert "Δημιουργός Περιεχομένου για Sneakers" in response.data.decode('utf-8')
+
+def test_generate_route(client, mocker):
+    """Test the generate route with mocked backend calls."""
+    mocker.patch('api_handler.search_images', return_value=['img1.jpg'])
+    mocker.patch('api_handler.generate_all_texts', return_value=[{'platform': 'Test', 'greek': {}, 'english': {}}])
+    mocker.patch('api_handler.create_video', return_value='render-123')
+    
+    response = client.post('/generate', data={
+        'sneaker_name': 'My Test Shoe',
+        'platforms': ['Instagram']
+    })
+    
+    assert response.status_code == 200
+    assert "Κείμενα για Social Media" in response.data.decode('utf-8')
+    
+    api_handler.search_images.assert_called_once_with('My Test Shoe')
+    api_handler.generate_all_texts.assert_called_once_with('My Test Shoe', ['Instagram'])
+    api_handler.create_video.assert_called_once_with('My Test Shoe', ['img1.jpg'])
+
+def test_status_route_done(client, mocker):
+    """Test the status route when rendering is done."""
+    mocker.patch('api_handler.get_render_status', return_value={'status': 'done', 'url': 'http://shotstack.url/video.mp4', 'id': '123'})
+    mocker.patch('api_handler.upload_to_cloudinary', return_value='http://cloudinary.url/video.mp4')
+    
+    response = client.get('/status/render-123')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data['status'] == 'done'
+    assert json_data['url'] == 'http://cloudinary.url/video.mp4'
+
+def test_status_route_rendering(client, mocker):
+    """Test the status route when still rendering."""
+    mocker.patch('api_handler.get_render_status', return_value={'status': 'rendering'})
+    
+    response = client.get('/status/render-123')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data['status'] == 'rendering'
