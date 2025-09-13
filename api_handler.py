@@ -154,7 +154,7 @@ def create_video(sneaker_name: str, image_urls: list[str]) -> str:
         return None
 
 def get_render_status(render_id: str) -> dict:
-    """Gets the status of a Shotstack render.""" 
+    """Gets the status of a Shotstack render."""
     if not SHOTSTACK_API_KEY:
         raise ValueError("SHOTSTACK_API_KEY is not set.")
         
