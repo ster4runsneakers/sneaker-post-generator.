@@ -2,7 +2,7 @@ Flask
 requests
 python-dotenv
 cloudinary
-pexels-api-py
+google-api-python-client
 gunicorn
 pytest
 pytest-mock
