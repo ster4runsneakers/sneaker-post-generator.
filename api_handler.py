@@ -31,6 +31,7 @@ def search_images(sneaker_name: str, count: int = 5) -> list[str]:
     try:
         api = Pexels(PEXELS_API_KEY)
         search_results = api.search_photos(sneaker_name, page=1, per_page=count)
+        print(f"Pexels API response: {search_results}")
         
         image_urls = [photo['src']['large'] for photo in search_results['photos']]
         if not image_urls:
@@ -147,6 +148,7 @@ def create_video(sneaker_name: str, image_urls: list[str]) -> str:
     
     try:
         response = requests.post(url, headers=headers, json=data)
+        print(f"Shotstack API response: {response.json()}")
         response.raise_for_status()
         return response.json()["response"]["id"]
     except requests.RequestException as e:
@@ -178,6 +180,7 @@ def upload_to_cloudinary(video_url: str, sneaker_name: str) -> str:
         
     try:
         upload_result = cloudinary.uploader.upload(
+        print(f"Cloudinary API response: {upload_result}")
             video_url,
             resource_type="video",
             public_id=f"sneakers/{sneaker_name.replace(' ', '_')}_{int(time.time())}"
