@@ -32,7 +32,7 @@ def search_images(sneaker_name: str, count: int = 5) -> list[str]:
         api = Pexels(PEXELS_API_KEY)
         search_results = api.search_photos(sneaker_name, page=1, per_page=count)
         
-        image_urls = [photo['src']['large'] for photo in search_results['photos']
+        image_urls = [photo['src']['large'] for photo in search_results['photos']]
         if not image_urls:
             print(f"Warning: No images found on Pexels for '{sneaker_name}'")
         return image_urls
